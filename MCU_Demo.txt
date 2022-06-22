@@ -1,0 +1,156 @@
+
+//*************************************************************************
+//* Function :  Send_To_HMI
+//*			    Send data to HMI
+//*************************************************************************
+void Send_To_HMI(char *hmi_data, uint16_t size)
+{
+	for (uint8_t i = 0; i < 3; i++) hmi_data[size + i] = 0xFF;
+	HAL_StatusTypeDef ret = HAL_UART_Transmit(&huart6, (uint8_t *)hmi_data, size + 3, 0xFFFF);
+	if (ret != HAL_OK) printf("UART6 transmit error1 : %u\n", ret);
+	//printf("%s\n", hmi_data);
+}
+
+//*************************************************************************
+//* Function :  InitTimer4
+//*			    Initialized to 1 microsec. Used by Delay_us function
+//*************************************************************************
+void InitTimer4()
+{
+	  RCC->APB1ENR |= (0x1UL << (2U)); 	// enable clock for TIM4
+	  //TIM4->CR1 &= ~(0x1UL << (0U));  	// disable timer
+	  TIM4->PSC = 84 - 1;  				// Prescalar value
+	  TIM4->ARR = 0xFFFF - 1; 			// ARR value
+	  //TIM4->DIER |= (0x1UL << (0U));
+	  TIM4->CR1 |= (0x1UL << (0U));   	// enable timer
+	  while (!(TIM4->SR & (1<<0U)));  	// UIF: Update interrupt flag..  This bit is set by hardware when the registers are updated
+}
+
+//*************************************************************************
+//* Function :  Delay_us
+//*************************************************************************
+void Delay_us(uint32_t duration)
+{
+	//HAL_GPIO_WritePin(GPIOA, LED2_Pin, GPIO_PIN_SET);
+	TIM4->CNT = 0;
+	while (TIM4->CNT < duration);
+	//HAL_GPIO_WritePin(GPIOA, LED2_Pin, GPIO_PIN_RESET);
+}
+
+//*************************************************************************
+//* Function :  Delay_ms
+//*************************************************************************
+void Delay_ms(uint32_t duration)
+{
+	uint16_t i;
+
+	for (i = 0; i < duration; i++)
+	{
+		Delay_us(1000); // delay of 1 ms
+	}
+}
+
+/**
+  * @brief  Display date and time on command line
+  * @param  None
+  * @retval None
+  */
+void Display_Time(char *cmd)
+{
+
+	RTC_TimeTypeDef sTime = {0};
+	RTC_DateTypeDef sDate = {0};
+
+	if (HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BCD) == HAL_OK)
+	{
+		printf("%02X-%02X-%02X ", sDate.Date, sDate.Month, sDate.Year);
+	}
+
+	if (HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BCD) == HAL_OK)
+	{
+		printf("%02X:%02X:%02X\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+	}
+}
+
+/**
+  * @brief  Set date command set date dd-mm-yy
+  * @param  cmd : char array for date in format dd-mm-yy
+  * @retval None
+  */
+void Set_Date(char *cmd)
+{
+	RTC_DateTypeDef sDate = {0};
+	char *cmd_ptr;
+
+	cmd_ptr = cmd;
+	cmd_ptr += strlen("set date");
+
+	if (*cmd_ptr == ' ')
+	{
+		cmd_ptr++;									// skip blank
+
+		sDate.Date = (((cmd_ptr[0] - 0x30) << 4)  & 0xF0) | (((cmd_ptr[1] - 0x30) & 0x0F));
+		sDate.Month = (((cmd_ptr[3] - 0x30) << 4)  & 0xF0) | (((cmd_ptr[4] - 0x30) & 0x0F));
+		sDate.Year = (((cmd_ptr[6] - 0x30) << 4)  & 0xF0) | (((cmd_ptr[7] - 0x30) & 0x0F));
+		sDate.WeekDay = RTC_WEEKDAY_SUNDAY;
+
+		if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+		{
+		  Error_Handler();
+		}
+		else
+		{
+			printf("New date : %02x-%02x-%02x\r\n", sDate.Date, sDate.Month, sDate.Year);
+		}
+	}
+}
+
+/**
+  * @brief  Set time
+  * @param  cmd : char array for time in format hh:mm:ss
+  * @retval None
+  */
+void Set_Time(char *cmd)
+{
+	RTC_TimeTypeDef sTime = {0};
+
+	char *cmd_ptr;
+
+	cmd_ptr = cmd;
+	cmd_ptr += strlen("set time");
+
+	if (*cmd_ptr == ' ')
+	{
+		cmd_ptr++;									// skip blank
+		sTime.Hours = (((cmd_ptr[0] - 0x30) << 4)  & 0xF0) | (((cmd_ptr[1] - 0x30) & 0x0F));
+		sTime.Minutes = (((cmd_ptr[3] - 0x30) << 4)  & 0xF0) | (((cmd_ptr[4] - 0x30) & 0x0F));
+		sTime.Seconds = (((cmd_ptr[6] - 0x30) << 4)  & 0xF0) | (((cmd_ptr[7] - 0x30) & 0x0F));
+		sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+		sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+
+
+		if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+		{
+		  Error_Handler();
+		}
+		else
+		{
+			printf("New time set : %02x:%02x:%02x\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
+		}
+	}
+}
+
+/**
+  * @brief  Dispaly date and time on command line
+  * @param  None
+  * @retval None
+  */
+void Set_Led_Period(uint16_t onperiod, uint16_t offperiod)
+{
+	led_on_period = onperiod;
+	led_off_period = offperiod;
+
+	// update led counters
+	led_on_counter = led_on_period;
+	led_off_counter = 0;
+}
